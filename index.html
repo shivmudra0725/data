@@ -1,59 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Attendance Recorder</title>
+  <title>Attendance Recorder (Debug)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
     body{font-family:sans-serif;text-align:center;padding:40px;}
     select,button{padding:10px;margin-top:20px;font-size:16px;}
     input[readonly]{border:none;background:#f5f5f5;padding:8px;}
+    #console-log{font-size:12px;color:#555;text-align:left;max-height:120px;overflow:auto;border:1px solid #ccc;padding:6px;margin-top:20px;}
   </style>
-  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <h2>Mark Your Attendance</h2>
+  <h2>Mark Your Attendance (Debug)</h2>
 
   <div>Date: <input id="today" type="text" readonly></div><br>
 
   <label>Select Roll&nbsp;No:</label><br>
   <select id="roll">
     <option value="">-- Choose Roll No --</option>
-    <option value="101">101</option>
-    <option value="102">102</option>
+    <option value="101">101</option><option value="102">102</option>
     <option value="103">103</option>
-    <!-- add more -->
   </select><br><br>
 
-  <!-- Google Sign‑In button -->
+  <!-- Google Sign-In -->
   <div id="g_id_onload"
        data-client_id="544464464339-odcb9nk4t036p3f4ggl7d4n81r8v9v7f.apps.googleusercontent.com"
-       data-callback="handleCredential"></div>
+       data-callback="handleCredential"
+       data-auto_select="false"></div>
   <div class="g_id_signin" data-type="standard"></div><br>
 
   <button onclick="submitAttendance()">Submit</button>
   <p id="status"></p>
 
+  <div id="console-log"></div>
+
 <script>
-  /* auto date */
+  function log(msg) {
+    const area = document.getElementById('console-log');
+    area.textContent += msg + "\n";
+    console.log(msg);
+  }
+
+  /* set date */
   const urlDate = new URLSearchParams(location.search).get('d');
-  const localISO = new Date(Date.now() - new Date().getTimezoneOffset()*60000)
-                     .toISOString().slice(0,10);
+  const localISO = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
   document.getElementById('today').value = urlDate || localISO;
 
   const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxeGoBKb4bjsB_XaGaqB3iQ8gUTEQj3_ayX17gInfGS6TL5aggXEyiHLCDgC-zN_iubhg/exec';
   let userEmail = '';
 
-  function handleCredential(resp){
-    const payload = JSON.parse(atob(resp.credential.split('.')[1]));
-    userEmail = payload.email || '';
-    document.getElementById('status').textContent = 'Signed in as: '+userEmail;
+  function handleCredential(resp) {
+    log('handleCredential called');
+    try {
+      const payload = JSON.parse(atob(resp.credential.split('.')[1]));
+      userEmail = payload.email || '';
+      log('Email captured: ' + userEmail);
+      document.getElementById('status').textContent = 'Signed in as: ' + userEmail;
+    } catch(e) {
+      log('Error parsing credential: ' + e.message);
+    }
   }
 
   async function reverseGeocode(lat,lon){
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
                             {headers:{'User-Agent':'attendance-app'}});
-    return res.ok ? (await res.json()).display_name : `${lat},${lon}`;
+    const disp = res.ok ? (await res.json()).display_name : `${lat},${lon}`;
+    log('Reverse geocode result: '+disp);
+    return disp;
   }
 
   async function submitAttendance(){
@@ -61,25 +75,35 @@
     const date = document.getElementById('today').value;
     const out  = document.getElementById('status');
 
-    if(!userEmail){ out.textContent='Please sign in first.'; return; }
-    if(!roll){ out.textContent='Select roll number.'; return; }
-    if(!navigator.geolocation){ out.textContent='GPS not supported.'; return; }
+    if(!userEmail){ out.textContent='Please sign in first.'; log('No userEmail'); return; }
+    if(!roll){ out.textContent='Select roll number.'; log('No roll'); return; }
+    if(!navigator.geolocation){ out.textContent='GPS not supported.'; log('No geolocation'); return; }
 
     out.textContent='Getting location…';
     navigator.geolocation.getCurrentPosition(async pos=>{
       const {latitude:lat,longitude:lon} = pos.coords;
-      let addr=''; try{addr = await reverseGeocode(lat,lon);}catch{}
+      log(`Coords: ${lat}, ${lon}`);
+      let addr='';
+      try{ addr=await reverseGeocode(lat,lon); }catch(e){ log('Geocode error '+e.message); }
 
       const data = new URLSearchParams({date,email:userEmail,rollNo:roll,lat,lon,addr});
+      log('POST body: '+data.toString());
+
       out.textContent='Submitting…';
-      try{
+      try {
         const res = await fetch(WEBAPP_URL,{method:'POST',body:data});
         const txt = (await res.text()).trim();
+        log('Server reply: '+txt);
         if(txt==='Success'){ out.textContent='✅ Attendance marked!'; }
         else if(txt==='Already marked'){ out.textContent='⚠️ Already marked today.'; }
         else{ out.textContent='Server replied: '+txt; }
-      }catch(err){ out.textContent='Network error: '+err.message; }
-    },err=>{ out.textContent='GPS error: '+err.message; },{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
+      } catch(err) {
+        out.textContent='Network error: '+err.message;
+        log('Fetch error: '+err.message);
+      }
+    }, err=>{ out.textContent='GPS error: '+err.message; log('GPS error: '+err.message); }, {
+      enableHighAccuracy:false,timeout:5000,maximumAge:60000
+    });
   }
 </script>
 </body>
