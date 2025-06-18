@@ -17,21 +17,17 @@ function doPost(e) {
     return ContentService.createTextOutput('Error: Missing fields');
   }
 
-  // 1. Create sheet if it doesn't exist
   let sheet = ss.getSheetByName(date);
   if (!sheet) {
     sheet = ss.insertSheet(date);
     sheet.appendRow(['Timestamp', 'Email', 'Roll No', 'Latitude', 'Longitude', 'Address']);
   }
 
-  // 2. Duplicate check based on Gmail (column B)
   const emails = sheet.getRange(2, 2, sheet.getLastRow() - 1).getValues().flat();
   if (emails.includes(email)) {
     return ContentService.createTextOutput('Already marked');
   }
 
-  // 3. Append new row
   sheet.appendRow([new Date(), email, roll, lat, lon, addr]);
-
   return ContentService.createTextOutput('Success');
 }

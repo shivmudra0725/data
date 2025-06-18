@@ -8,14 +8,12 @@
     select,button{padding:10px;margin-top:20px;font-size:16px;}
     input[readonly]{border:none;background:#f5f5f5;padding:8px;}
   </style>
-
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <h2>Mark Your Attendance</h2>
 
-  <!-- auto‑filled date; URL parameter “d=YYYY-MM-DD” overrides today -->
   <div>Date: <input id="today" type="text" readonly></div><br>
 
   <label>Select Roll&nbsp;No:</label><br>
@@ -24,80 +22,64 @@
     <option value="101">101</option>
     <option value="102">102</option>
     <option value="103">103</option>
-    <!-- add more roll numbers here -->
+    <!-- add more -->
   </select><br><br>
 
-  <!-- Google Sign‑In button renders here -->
+  <!-- Google Sign‑In button -->
   <div id="g_id_onload"
-       data-client_id="544464464339-odcb9nk4t036p3f4ggl7d4n81r8v9v7f.apps.googleusercontent.com"   <!-- ← paste your client ID -->
-       data-callback="handleCredential">
-  </div>
+       data-client_id="544464464339-odcb9nk4t036p3f4ggl7d4n81r8v9v7f.apps.googleusercontent.com"
+       data-callback="handleCredential"></div>
   <div class="g_id_signin" data-type="standard"></div><br>
 
   <button onclick="submitAttendance()">Submit</button>
   <p id="status"></p>
 
 <script>
-  /* ---------- 1. auto‑set date ---------- */
+  /* auto date */
   const urlDate = new URLSearchParams(location.search).get('d');
   const localISO = new Date(Date.now() - new Date().getTimezoneOffset()*60000)
-                      .toISOString().slice(0,10);
+                     .toISOString().slice(0,10);
   document.getElementById('today').value = urlDate || localISO;
 
-  /* ---------- 2. globals ---------- */
-  const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxeGoBKb4bjsB_XaGaqB3iQ8gUTEQj3_ayX17gInfGS6TL5aggXEyiHLCDgC-zN_iubhg/exec';  /* ← paste Apps Script URL */
-  let userEmail = '';                             // filled after sign‑in
+  const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxeGoBKb4bjsB_XaGaqB3iQ8gUTEQj3_ayX17gInfGS6TL5aggXEyiHLCDgC-zN_iubhg/exec';
+  let userEmail = '';
 
-  /* ---------- 3. Google sign‑in callback ---------- */
   function handleCredential(resp){
     const payload = JSON.parse(atob(resp.credential.split('.')[1]));
     userEmail = payload.email || '';
-    document.getElementById('status').textContent =
-      'Signed in as: '+userEmail;
+    document.getElementById('status').textContent = 'Signed in as: '+userEmail;
   }
 
-  /* ---------- 4. helper: reverse‑geocode ---------- */
   async function reverseGeocode(lat,lon){
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
-      {headers:{'User-Agent':'attendance-app'}});
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
+                            {headers:{'User-Agent':'attendance-app'}});
     return res.ok ? (await res.json()).display_name : `${lat},${lon}`;
   }
 
-  /* ---------- 5. main submit ---------- */
   async function submitAttendance(){
     const roll = document.getElementById('roll').value;
     const date = document.getElementById('today').value;
     const out  = document.getElementById('status');
 
     if(!userEmail){ out.textContent='Please sign in first.'; return; }
-    if(!roll){      out.textContent='Select roll number.';  return; }
-    if(!navigator.geolocation){out.textContent='GPS not supported.'; return;}
+    if(!roll){ out.textContent='Select roll number.'; return; }
+    if(!navigator.geolocation){ out.textContent='GPS not supported.'; return; }
 
     out.textContent='Getting location…';
     navigator.geolocation.getCurrentPosition(async pos=>{
-      const {latitude:lat,longitude:lon}=pos.coords;
-      let addr='';
-      try{ addr = await reverseGeocode(lat,lon); }catch(e){}
+      const {latitude:lat,longitude:lon} = pos.coords;
+      let addr=''; try{addr = await reverseGeocode(lat,lon);}catch{}
 
-      const data = new URLSearchParams({date,email:userEmail,
-                                        rollNo:roll,lat,lon,addr});
+      const data = new URLSearchParams({date,email:userEmail,rollNo:roll,lat,lon,addr});
       out.textContent='Submitting…';
       try{
-        const res  = await fetch(WEBAPP_URL,{method:'POST',body:data});
-        const txt  = (await res.text()).trim();
-        if(txt==='Success'){
-          out.textContent='✅ Attendance marked!';
-        }else if(txt==='Already marked'){
-          out.textContent='⚠️ Already marked today.';
-        }else{
-          out.textContent='Server replied: '+txt;
-        }
-      }catch(err){
-        out.textContent='Network error: '+err.message;
-      }
-    },err=>{ out.textContent='GPS error: '+err.message; },{
-      enableHighAccuracy:false,timeout:5000,maximumAge:60000});
+        const res = await fetch(WEBAPP_URL,{method:'POST',body:data});
+        const txt = (await res.text()).trim();
+        if(txt==='Success'){ out.textContent='✅ Attendance marked!'; }
+        else if(txt==='Already marked'){ out.textContent='⚠️ Already marked today.'; }
+        else{ out.textContent='Server replied: '+txt; }
+      }catch(err){ out.textContent='Network error: '+err.message; }
+    },err=>{ out.textContent='GPS error: '+err.message; },{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
   }
 </script>
 </body>
